@@ -19,7 +19,11 @@ def _load_company() -> dict:
     for name in ("company.json", "company.example.json"):
         path = _CONFIG_DIR / name
         if path.exists():
-            return json.loads(path.read_text(encoding="utf-8"))
+            try:
+                return json.loads(path.read_text(encoding="utf-8"))
+            except json.JSONDecodeError as e:
+                # a typo in the config must not take the agent down
+                print(f"WARNING: {path.name} is invalid JSON ({e}), trying fallback")
     return {}
 
 

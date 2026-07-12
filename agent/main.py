@@ -59,9 +59,9 @@ def build_llm() -> agents_llm.LLM:
     Groq -> Cerebras -> Gemini -> OpenRouter. A rate-limited provider is
     skipped mid-call without dropping the interview.
     """
-    chain: list[agents_llm.LLM] = [
-        groq.LLM(model=os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"))
-    ]
+    chain: list[agents_llm.LLM] = []
+    if os.getenv("GROQ_API_KEY"):
+        chain.append(groq.LLM(model=os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")))
     if os.getenv("CEREBRAS_API_KEY"):
         chain.append(
             openai_plugin.LLM.with_cerebras(
@@ -79,6 +79,11 @@ def build_llm() -> agents_llm.LLM:
                 model=os.getenv("OPENROUTER_MODEL", "meta-llama/llama-3.3-70b-instruct:free"),
                 api_key=os.environ["OPENROUTER_API_KEY"],
             )
+        )
+    if not chain:
+        raise RuntimeError(
+            "No LLM provider key found in .env — set at least one of "
+            "GROQ_API_KEY / CEREBRAS_API_KEY / GOOGLE_API_KEY / OPENROUTER_API_KEY"
         )
     if len(chain) == 1:
         return chain[0]

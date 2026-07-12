@@ -42,6 +42,15 @@ EVALUATION_DIR = PROJECT_ROOT / "data" / "evaluations"
 app = FastAPI(title="EchoHire", docs_url="/api/docs")
 
 
+def _check_recruiter_key(key: str | None) -> None:
+    """Candidate CTC/evaluation data is sensitive. If RECRUITER_KEY is set in
+    .env, the recruiter endpoints require ?key=<that value>. Unset = open
+    (local development)."""
+    expected = os.getenv("RECRUITER_KEY")
+    if expected and key != expected:
+        raise HTTPException(401, "recruiter key required (?key=...)")
+
+
 @app.post("/api/apply")
 async def apply(
     name: str = Form(...),
@@ -62,14 +71,17 @@ async def apply(
         text = extract_pdf_text(pdf_path)
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
+    except Exception as e:  # encrypted/corrupt PDFs raise assorted pypdf errors
+        raise HTTPException(400, f"Could not read this PDF ({type(e).__name__})") from e
 
     try:
         profile = structure_resume(text)
     except RuntimeError as e:
         raise HTTPException(503, f"Resume parsing unavailable: {e}") from e
 
-    # form fields fill gaps the resume didn't state
-    profile.setdefault("name", name)
+    # form fields fill gaps the resume didn't state (parser uses null, so
+    # `or`, not setdefault — a present-but-null key must still be filled)
+    profile["name"] = profile.get("name") or name
     profile["email"] = profile.get("email") or email
     profile["phone"] = profile.get("phone") or phone
     profile_path = save_profile(profile, role_applied=role)
@@ -109,8 +121,9 @@ def _interviewed_slugs() -> set[str]:
 
 
 @app.get("/api/candidates")
-def candidates():
+def candidates(key: str | None = None):
     """All applications, newest first, with interview status."""
+    _check_recruiter_key(key)
     if not CANDIDATE_DIR.exists():
         return []
     interviewed = _interviewed_slugs()
@@ -137,12 +150,15 @@ def candidates():
 
 
 @app.get("/api/results")
-def results():
+def results(key: str | None = None):
     """All interviews, newest first, each with its evaluation if one exists."""
+    _check_recruiter_key(key)
     if not TRANSCRIPT_DIR.exists():
         return []
     out = []
-    for t_path in sorted(TRANSCRIPT_DIR.glob("*.json"), reverse=True):
+    for t_path in sorted(
+        TRANSCRIPT_DIR.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True
+    ):
         entry: dict = {"id": t_path.stem}
         match = re.match(r"interview-(.+)-\d+_\d{8}_\d{6}$", t_path.stem)
         if match:
