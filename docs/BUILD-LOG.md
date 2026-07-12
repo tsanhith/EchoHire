@@ -161,3 +161,25 @@ recommendation badge, collapsible transcript).
   recommended "proceed") via live Groq call
 - Backend: dummy PDF application → parsed profile + room; token endpoint
   returns a valid JWT; results endpoint and all three pages serve correctly
+
+## 2026-07-12 — Company config + dashboard completion (`feat/company-config-and-dashboard`)
+
+Closed the remaining gaps for v1:
+
+- **Company config mechanism** (`config/company.json`, gitignored; committed
+  example template): company name, intro, facts the agent may share, and a
+  per-role question bank. Loose role matching ("ai/ml" key matches "AI/ML
+  Engineer"). A new interview stage 5b asks matched role questions. When the
+  senior answers the questionnaire, the data drops into this file — zero code
+  changes.
+- **Prompt hardening**: the company facts list is now framed as "the ONLY
+  facts you may share" — anything else gets deflected to the human team.
+- **Recruiter dashboard**: new Applications table (`GET /api/candidates`) —
+  who applied, role, experience, interviewed/pending status, and a
+  "copy interview link" button that mints a fresh room for the candidate.
+  Interview cards now show the role applied for (transcript ↔ candidate
+  profile joined by room-name slug).
+- **Interview room UX**: mute/unmute button and a live call timer.
+
+Verified: role-question matching and prompt injection, candidates endpoint
+returns both test applications with correct status, all pages serve.
