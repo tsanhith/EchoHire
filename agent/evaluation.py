@@ -43,6 +43,8 @@ def _transcript_to_text(history: dict) -> str:
         if item.get("type") != "message":
             continue
         role = item.get("role", "?")
+        if role == "system":
+            continue  # the evaluator must judge the candidate, not our instructions
         content = item.get("content", [])
         text = " ".join(c for c in content if isinstance(c, str))
         if text.strip():
