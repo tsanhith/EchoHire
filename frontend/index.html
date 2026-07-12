@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EchoHire — Apply</title>
+<style>
+  :root { font-family: system-ui, sans-serif; }
+  body { margin: 0; background: #0f1117; color: #e6e8ee; display: grid; place-items: center; min-height: 100vh; }
+  .card { background: #181b25; border: 1px solid #2a2f3e; border-radius: 14px; padding: 2rem; width: min(420px, 92vw); }
+  h1 { margin: 0 0 .25rem; font-size: 1.5rem; } h1 span { color: #6c8cff; }
+  p.sub { color: #9aa1b3; margin: 0 0 1.5rem; font-size: .92rem; }
+  label { display: block; font-size: .85rem; color: #9aa1b3; margin: .9rem 0 .3rem; }
+  input, select { width: 100%; box-sizing: border-box; background: #0f1117; color: #e6e8ee; border: 1px solid #2a2f3e; border-radius: 8px; padding: .6rem .7rem; font-size: .95rem; }
+  input[type=file] { padding: .45rem; }
+  button { margin-top: 1.4rem; width: 100%; background: #6c8cff; color: #fff; border: 0; border-radius: 8px; padding: .75rem; font-size: 1rem; font-weight: 600; cursor: pointer; }
+  button:disabled { opacity: .5; cursor: wait; }
+  #status { margin-top: 1rem; font-size: .9rem; min-height: 1.2em; }
+  #status.err { color: #ff7b7b; } #status.ok { color: #7bdd8f; }
+  a.start { display: block; margin-top: 1rem; text-align: center; background: #1f6f43; color: #fff; text-decoration: none; border-radius: 8px; padding: .75rem; font-weight: 600; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>Echo<span>Hire</span></h1>
+  <p class="sub">Apply and complete a short screening interview with our AI recruiter — right in your browser.</p>
+  <form id="f">
+    <label>Full name</label><input name="name" required>
+    <label>Email</label><input name="email" type="email" required>
+    <label>Phone</label><input name="phone">
+    <label>Role applying for</label><input name="role" required placeholder="e.g. AI/ML Engineer">
+    <label>Resume (PDF)</label><input name="resume" type="file" accept="application/pdf" required>
+    <button id="btn">Submit application</button>
+  </form>
+  <div id="status"></div>
+  <div id="next"></div>
+</div>
+<script>
+const f = document.getElementById('f'), status = document.getElementById('status'),
+      next = document.getElementById('next'), btn = document.getElementById('btn');
+f.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  btn.disabled = true; status.className = ''; next.innerHTML = '';
+  status.textContent = 'Uploading and analyzing your resume…';
+  try {
+    const res = await fetch('/api/apply', { method: 'POST', body: new FormData(f) });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || 'Something went wrong');
+    status.className = 'ok';
+    status.textContent = `Thanks ${data.candidate}! Your application is in.`;
+    next.innerHTML = `<a class="start" href="${data.interview_url}">Start your interview now →</a>`;
+  } catch (err) {
+    status.className = 'err'; status.textContent = err.message;
+  } finally { btn.disabled = false; }
+});
+</script>
+</body>
+</html>

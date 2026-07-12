@@ -36,13 +36,31 @@ EchoHire/
 └── README.md
 ```
 
-## Development
+## Running it
 
 ```powershell
 python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt
+copy .env.example .env       # then fill in your keys
+python agent\main.py download-files
 ```
+
+Two processes, two terminals:
+
+```powershell
+# 1. the AI interviewer (joins interview rooms automatically)
+python agent\main.py dev
+
+# 2. the web portal
+python -m uvicorn backend.app:app --port 8000
+```
+
+Then open **http://localhost:8000** — apply with a resume PDF, click the
+interview link, and talk to the AI in your browser. Results (transcript +
+AI evaluation + recommendation) appear at **http://localhost:8000/results.html**.
+
+Quick mic test without the web portal: `python agent\main.py console`.
 
 Branching: `main` is stable; work happens on `feat/*` / `fix/*` / `docs/*` branches and merges via PR.
 
