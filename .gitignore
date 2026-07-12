@@ -1,0 +1,33 @@
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# Environment / secrets — never commit these
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Node (for the web frontend later)
+node_modules/
+dist/
+.next/
+
+# Data — candidate resumes/recordings must never be committed
+data/
+uploads/
+recordings/
+*.db
+*.sqlite3
