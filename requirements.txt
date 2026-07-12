@@ -1,2 +1,2 @@
-livekit-agents[deepgram,groq,silero,turn-detector]>=1.0
+livekit-agents[deepgram,groq,google,silero,turn-detector]>=1.0
 python-dotenv>=1.0
