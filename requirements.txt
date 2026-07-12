@@ -1,2 +1,5 @@
 livekit-agents[deepgram,groq,google,silero,turn-detector]>=1.0
 python-dotenv>=1.0
+pypdf>=5.0
+openai>=1.0
+

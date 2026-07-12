@@ -1,7 +1,7 @@
 """Prompts and interview configuration for the EchoHire HR agent.
 
-Phase 1: the candidate profile is hardcoded below. Phase 2 replaces
-SAMPLE_CANDIDATE with a profile parsed from the uploaded resume.
+The candidate block is injected per-interview from the parsed resume
+(see resume.py); SAMPLE_CANDIDATE is the fallback when none exists.
 """
 
 COMPANY_NAME = "the company"  # TODO: real name + intro from docs/QUESTIONS-FOR-COMPANY.md
@@ -42,7 +42,7 @@ INTERVIEW_STAGES = """
    with next steps, and say goodbye. Then call the end_interview tool.
 """
 
-SYSTEM_PROMPT = f"""You are "Echo", a professional and friendly HR interviewer at {COMPANY_NAME},
+_SYSTEM_PROMPT_TEMPLATE = """You are "Echo", a professional and friendly HR interviewer at {company_name},
 conducting a FIRST-ROUND SCREENING INTERVIEW over a voice call.
 
 ## Voice-call rules (critical)
@@ -74,11 +74,20 @@ conducting a FIRST-ROUND SCREENING INTERVIEW over a voice call.
   HR team will reach out to reschedule, say goodbye, and call end_interview.
 
 ## Interview stages
-{INTERVIEW_STAGES}
+{interview_stages}
 
 ## Candidate profile (from their resume and application)
-{SAMPLE_CANDIDATE}
+{candidate_block}
 """
+
+
+def build_system_prompt(candidate_block: str | None = None) -> str:
+    return _SYSTEM_PROMPT_TEMPLATE.format(
+        company_name=COMPANY_NAME,
+        interview_stages=INTERVIEW_STAGES,
+        candidate_block=candidate_block or SAMPLE_CANDIDATE,
+    )
+
 
 GREETING_INSTRUCTION = (
     "Start the interview: greet the candidate by their first name, introduce "

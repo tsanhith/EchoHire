@@ -96,3 +96,30 @@ and OpenRouter's `:free` models are too throttled for primary use (last in chain
 
 Also migrated the deprecated `turn_detector` plugin to
 `livekit.agents.inference.TurnDetector` (`v1-mini` — fully local, still free).
+
+Post-merge tuning after another live run: the FallbackAdapter's defaults are
+hostile to free tiers — `attempt_timeout=5.0` becomes the request deadline in
+the google plugin (Gemini requires ≥10s, so Gemini 400'd on every call), and
+recovery probes every 0.5s are real requests that drained OpenRouter's
+8-req/min free quota single-handedly. Now: 10s timeout, 30s probe interval,
+and `reasoning_effort="low"` for Cerebras' gpt-oss (thinking tokens are
+wasted time in a voice call).
+
+## 2026-07-12 — Phase 2: resume pipeline (`feat/resume-pipeline`)
+
+The agent now interviews real candidates instead of the hardcoded sample:
+
+- `resume.py` — `pypdf` text extraction (with a guard for scanned/image PDFs)
+  → LLM structuring into a fixed JSON schema (name, experience, companies,
+  skills, projects…) → rendered into the interviewer's system prompt.
+- Parsing reuses the same multi-provider fallback idea as the voice chain
+  (Groq → Cerebras → Gemini via their OpenAI-compatible endpoints) since it
+  happens offline where latency doesn't matter.
+- `parse_resume.py <pdf> --role "..."` CLI saves to `data/candidates/<name>.json`;
+  the agent auto-loads the most recently parsed candidate at call start
+  (override with `CANDIDATE_PROFILE=<path>`).
+- Extraction prompt rules: never invent facts absent from the resume, null for
+  missing data — the interviewer must not "know" things the candidate never wrote.
+
+Tested end-to-end with a generated dummy resume: PDF → 884 chars extracted →
+structured by Groq → agent system prompt contains the right candidate.
