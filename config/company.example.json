@@ -1,0 +1,23 @@
+{
+  "name": "Acme Technologies",
+  "intro": "Acme Technologies is a growing software services company in Hyderabad building products for fintech and healthcare clients.",
+  "agent_may_share": [
+    "We work in a hybrid model: 3 days from the Hyderabad office",
+    "Team sizes are typically 6-10 engineers",
+    "The interview process is: this screening call, a technical round, and a final discussion with the hiring manager"
+  ],
+  "role_questions": {
+    "backend developer": [
+      "Which databases have you worked with in production, and at what scale?",
+      "Describe a time you had to debug a performance problem in an API."
+    ],
+    "ai/ml": [
+      "Walk me through an ML project you took from experiment to deployment.",
+      "How do you evaluate whether a RAG system is actually reducing hallucinations?"
+    ],
+    "full stack": [
+      "Which frontend framework are you strongest in, and what have you shipped with it?",
+      "How do you handle authentication between your frontend and backend?"
+    ]
+  }
+}

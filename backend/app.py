@@ -28,7 +28,12 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile  # noqa: E402
 from fastapi.staticfiles import StaticFiles  # noqa: E402
 from livekit import api  # noqa: E402
 
-from resume import extract_pdf_text, save_profile, structure_resume  # noqa: E402
+from resume import (  # noqa: E402
+    CANDIDATE_DIR,
+    extract_pdf_text,
+    save_profile,
+    structure_resume,
+)
 
 UPLOAD_DIR = PROJECT_ROOT / "data" / "uploads"
 TRANSCRIPT_DIR = PROJECT_ROOT / "data" / "transcripts"
@@ -92,6 +97,45 @@ def token(room: str):
     return {"token": jwt, "url": os.environ["LIVEKIT_URL"]}
 
 
+def _interviewed_slugs() -> set[str]:
+    """Candidate slugs that have at least one saved transcript."""
+    slugs = set()
+    if TRANSCRIPT_DIR.exists():
+        for t_path in TRANSCRIPT_DIR.glob("*.json"):
+            match = re.match(r"interview-(.+)-\d+_\d{8}_\d{6}$", t_path.stem)
+            if match:
+                slugs.add(match.group(1))
+    return slugs
+
+
+@app.get("/api/candidates")
+def candidates():
+    """All applications, newest first, with interview status."""
+    if not CANDIDATE_DIR.exists():
+        return []
+    interviewed = _interviewed_slugs()
+    out = []
+    for path in sorted(
+        CANDIDATE_DIR.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True
+    ):
+        try:
+            profile = json.loads(path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            continue
+        out.append(
+            {
+                "slug": path.stem,
+                "name": profile.get("name"),
+                "role_applied": profile.get("role_applied"),
+                "email": profile.get("email"),
+                "experience_years": profile.get("total_experience_years"),
+                "applied_at": int(path.stat().st_mtime),
+                "interviewed": path.stem in interviewed,
+            }
+        )
+    return out
+
+
 @app.get("/api/results")
 def results():
     """All interviews, newest first, each with its evaluation if one exists."""
@@ -100,6 +144,19 @@ def results():
     out = []
     for t_path in sorted(TRANSCRIPT_DIR.glob("*.json"), reverse=True):
         entry: dict = {"id": t_path.stem}
+        match = re.match(r"interview-(.+)-\d+_\d{8}_\d{6}$", t_path.stem)
+        if match:
+            profile_path = CANDIDATE_DIR / f"{match.group(1)}.json"
+            if profile_path.exists():
+                try:
+                    profile = json.loads(profile_path.read_text(encoding="utf-8"))
+                    entry["candidate"] = {
+                        "name": profile.get("name"),
+                        "role_applied": profile.get("role_applied"),
+                        "email": profile.get("email"),
+                    }
+                except json.JSONDecodeError:
+                    pass
         try:
             entry["transcript"] = json.loads(t_path.read_text(encoding="utf-8"))
         except json.JSONDecodeError:

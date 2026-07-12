@@ -25,6 +25,10 @@ node_modules/
 dist/
 .next/
 
+# Real company data (question banks, CTC bands) stays private;
+# config/company.example.json is the committed template
+config/company.json
+
 # Data — candidate resumes/recordings must never be committed
 data/
 uploads/

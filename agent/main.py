@@ -98,8 +98,8 @@ load_dotenv(PROJECT_ROOT / ".env")
 logger = logging.getLogger("echohire")
 
 
-def load_candidate_block(room_name: str) -> str | None:
-    """Candidate profile for this interview.
+def load_candidate(room_name: str) -> tuple[str | None, str | None]:
+    """(candidate block, role applied) for this interview.
 
     Web-portal rooms are named "interview-<candidate-slug>-<timestamp>", which
     maps to data/candidates/<candidate-slug>.json. Any other room (console
@@ -118,14 +118,17 @@ def load_candidate_block(room_name: str) -> str | None:
         profile = load_latest_profile()
     if profile is None:
         logger.warning("no parsed candidate found, interviewing the sample candidate")
-        return None
+        return None, None
     logger.info("interviewing candidate: %s", profile.get("name"))
-    return profile_to_prompt_block(profile, role_applied=profile.get("role_applied"))
+    role = profile.get("role_applied")
+    return profile_to_prompt_block(profile, role_applied=role), role
 
 
 class Interviewer(Agent):
-    def __init__(self, candidate_block: str | None) -> None:
-        super().__init__(instructions=build_system_prompt(candidate_block))
+    def __init__(self, candidate_block: str | None, role_applied: str | None) -> None:
+        super().__init__(
+            instructions=build_system_prompt(candidate_block, role_applied=role_applied)
+        )
 
     @function_tool
     async def end_interview(self, context: RunContext) -> None:
@@ -203,8 +206,9 @@ async def entrypoint(ctx: JobContext) -> None:
 
     ctx.add_shutdown_callback(cancel_watchdog)
 
+    candidate_block, role_applied = load_candidate(ctx.room.name)
     await session.start(
-        agent=Interviewer(load_candidate_block(ctx.room.name)), room=ctx.room
+        agent=Interviewer(candidate_block, role_applied), room=ctx.room
     )
     await session.generate_reply(instructions=GREETING_INSTRUCTION)
 
