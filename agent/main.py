@@ -46,17 +46,40 @@ MAX_CALL_SECONDS = 15 * 60
 def build_llm() -> agents_llm.LLM:
     """Groq is the primary LLM (fastest inference = best voice latency).
 
-    Groq's free tier caps llama-3.3-70b at 100k tokens/day, which a day of
-    interview testing can exhaust. If GOOGLE_API_KEY is set, Gemini Flash is
-    used as an automatic fallback when Groq errors or rate-limits.
+    Free tiers have daily token caps (Groq: 100k/day on the 70B model), so
+    every provider with a key in .env joins an automatic fallback chain:
+    Groq -> Cerebras -> Gemini -> OpenRouter. A rate-limited provider is
+    skipped mid-call without dropping the interview.
     """
-    primary = groq.LLM(model=os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"))
+    chain: list[agents_llm.LLM] = [
+        groq.LLM(model=os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"))
+    ]
+    if os.getenv("CEREBRAS_API_KEY"):
+        from livekit.plugins import openai as openai_plugin
+
+        chain.append(
+            openai_plugin.LLM.with_cerebras(
+                model=os.getenv("CEREBRAS_MODEL", "gpt-oss-120b"),
+                api_key=os.environ["CEREBRAS_API_KEY"],
+            )
+        )
     if os.getenv("GOOGLE_API_KEY"):
         from livekit.plugins import google
 
-        fallback = google.LLM(model=os.getenv("GEMINI_MODEL", "gemini-2.5-flash"))
-        return agents_llm.FallbackAdapter([primary, fallback])
-    return primary
+        chain.append(google.LLM(model=os.getenv("GEMINI_MODEL", "gemini-3.5-flash")))
+    if os.getenv("OPENROUTER_API_KEY"):
+        from livekit.plugins import openai as openai_plugin
+
+        chain.append(
+            openai_plugin.LLM.with_openrouter(
+                model=os.getenv("OPENROUTER_MODEL", "meta-llama/llama-3.3-70b-instruct:free"),
+                api_key=os.environ["OPENROUTER_API_KEY"],
+            )
+        )
+    if len(chain) == 1:
+        return chain[0]
+    logger.info("LLM fallback chain: %d providers", len(chain))
+    return agents_llm.FallbackAdapter(chain)
 
 load_dotenv(PROJECT_ROOT / ".env")
 

@@ -74,3 +74,25 @@ suggestion, not a guarantee** — call termination needs defense in depth:
    transcript-save callback.
 3. **Watchdog**: a hard 15-minute `asyncio` timer force-ends any call as a
    final backstop — no runaway calls, no drained free-tier quota.
+
+## 2026-07-12 — Rate-limited mid-interview: multi-provider LLM fallback
+
+A test call died with a Groq 429: the free tier allows 100k tokens/day on the
+70B model and one day of testing ate all of it. Two responses:
+
+1. **Cut the burn**: preemptive generation (on by default!) speculatively calls
+   the LLM before the user's turn is confirmed and throws away wrong guesses —
+   roughly 2x token usage for ~0.2s latency. Disabled.
+2. **Never depend on one free tier**: `build_llm()` now assembles a
+   `FallbackAdapter` chain from whatever keys exist in `.env`:
+   **Groq → Cerebras (gpt-oss-120b) → Gemini (3.5-flash) → OpenRouter**.
+   A provider that errors or rate-limits is skipped mid-call; the interview
+   continues on the next one. Combined free quota: ~1.6M tokens/day.
+
+Verified each provider with live API calls before wiring: notable findings —
+Cerebras free tier now hosts `gpt-oss-120b` (fast + solid tool calling),
+`gemini-2.5-flash` is retired for new accounts (had to move to `3.5-flash`),
+and OpenRouter's `:free` models are too throttled for primary use (last in chain).
+
+Also migrated the deprecated `turn_detector` plugin to
+`livekit.agents.inference.TurnDetector` (`v1-mini` — fully local, still free).
