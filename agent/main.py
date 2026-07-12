@@ -63,6 +63,8 @@ def build_llm() -> agents_llm.LLM:
             openai_plugin.LLM.with_cerebras(
                 model=os.getenv("CEREBRAS_MODEL", "gpt-oss-120b"),
                 api_key=os.environ["CEREBRAS_API_KEY"],
+                # gpt-oss is a reasoning model; keep thinking minimal for voice
+                reasoning_effort="low",
             )
         )
     if os.getenv("GOOGLE_API_KEY"):
@@ -77,7 +79,15 @@ def build_llm() -> agents_llm.LLM:
     if len(chain) == 1:
         return chain[0]
     logger.info("LLM fallback chain: %d providers", len(chain))
-    return agents_llm.FallbackAdapter(chain)
+    return agents_llm.FallbackAdapter(
+        chain,
+        # Gemini rejects request deadlines under 10s (the google plugin turns
+        # attempt_timeout into the deadline; the 5s default 400s every call).
+        attempt_timeout=10.0,
+        # Recovery probes are real requests: at the 0.5s default they drain
+        # per-minute quotas (OpenRouter free = 8 req/min) all by themselves.
+        retry_interval=30.0,
+    )
 
 load_dotenv(PROJECT_ROOT / ".env")
 
