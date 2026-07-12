@@ -15,6 +15,7 @@ Transcripts are saved to data/transcripts/ (gitignored) when the call ends.
 import asyncio
 import json
 import logging
+import os
 from datetime import datetime
 from pathlib import Path
 
@@ -28,9 +29,10 @@ from livekit.agents import (
     cli,
     function_tool,
     get_job_context,
+    llm as agents_llm,
 )
+from livekit.agents.inference import TurnDetector
 from livekit.plugins import deepgram, groq, silero
-from livekit.plugins.turn_detector.english import EnglishModel
 
 from prompts import GREETING_INSTRUCTION, SYSTEM_PROMPT
 
@@ -39,6 +41,22 @@ TRANSCRIPT_DIR = PROJECT_ROOT / "data" / "transcripts"
 
 # Hard ceiling so no call (and no free-tier quota) can run away.
 MAX_CALL_SECONDS = 15 * 60
+
+
+def build_llm() -> agents_llm.LLM:
+    """Groq is the primary LLM (fastest inference = best voice latency).
+
+    Groq's free tier caps llama-3.3-70b at 100k tokens/day, which a day of
+    interview testing can exhaust. If GOOGLE_API_KEY is set, Gemini Flash is
+    used as an automatic fallback when Groq errors or rate-limits.
+    """
+    primary = groq.LLM(model=os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"))
+    if os.getenv("GOOGLE_API_KEY"):
+        from livekit.plugins import google
+
+        fallback = google.LLM(model=os.getenv("GEMINI_MODEL", "gemini-2.5-flash"))
+        return agents_llm.FallbackAdapter([primary, fallback])
+    return primary
 
 load_dotenv(PROJECT_ROOT / ".env")
 
@@ -70,9 +88,16 @@ async def entrypoint(ctx: JobContext) -> None:
     session = AgentSession(
         vad=silero.VAD.load(),
         stt=deepgram.STT(model="nova-3", language="en"),
-        llm=groq.LLM(model="llama-3.3-70b-versatile"),
+        llm=build_llm(),
         tts=deepgram.TTS(),
-        turn_detection=EnglishModel(),
+        turn_handling={
+            # v1-mini runs fully in-process (no cloud inference) — free forever
+            "turn_detection": TurnDetector(version="v1-mini"),
+            # Preemptive generation speculatively calls the LLM before the
+            # user's turn is confirmed and discards wrong guesses — roughly
+            # doubles token burn for ~0.2s latency. Not worth it on free tiers.
+            "preemptive_generation": {"enabled": False},
+        },
     )
 
     async def save_transcript() -> None:
