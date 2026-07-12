@@ -12,6 +12,7 @@ with Silero VAD + a local turn-detection model for natural interruptions.
 Transcripts are saved to data/transcripts/ (gitignored) when the call ends.
 """
 
+import asyncio
 import json
 import logging
 from datetime import datetime
@@ -26,6 +27,7 @@ from livekit.agents import (
     WorkerOptions,
     cli,
     function_tool,
+    get_job_context,
 )
 from livekit.plugins import deepgram, groq, silero
 from livekit.plugins.turn_detector.english import EnglishModel
@@ -34,6 +36,9 @@ from prompts import GREETING_INSTRUCTION, SYSTEM_PROMPT
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 TRANSCRIPT_DIR = PROJECT_ROOT / "data" / "transcripts"
+
+# Hard ceiling so no call (and no free-tier quota) can run away.
+MAX_CALL_SECONDS = 15 * 60
 
 load_dotenv(PROJECT_ROOT / ".env")
 
@@ -53,6 +58,9 @@ class Interviewer(Agent):
             await speech.wait_for_playout()
         logger.info("interview ended by agent")
         context.session.shutdown()
+        # session.shutdown() only closes the session; the job (and console
+        # process) keeps running without this.
+        get_job_context().shutdown(reason="interview completed")
 
 
 async def entrypoint(ctx: JobContext) -> None:
@@ -78,6 +86,19 @@ async def entrypoint(ctx: JobContext) -> None:
         logger.info("transcript saved to %s", path)
 
     ctx.add_shutdown_callback(save_transcript)
+
+    async def enforce_max_duration() -> None:
+        await asyncio.sleep(MAX_CALL_SECONDS)
+        logger.warning("max call duration reached, force-ending call")
+        session.shutdown(drain=False)
+        ctx.shutdown(reason="max call duration reached")
+
+    watchdog = asyncio.create_task(enforce_max_duration())
+
+    async def cancel_watchdog() -> None:
+        watchdog.cancel()
+
+    ctx.add_shutdown_callback(cancel_watchdog)
 
     await session.start(agent=Interviewer(), room=ctx.room)
     await session.generate_reply(instructions=GREETING_INSTRUCTION)
