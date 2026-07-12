@@ -9,9 +9,14 @@ agent automatically picks up the most recently parsed candidate.
 """
 
 import argparse
+import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
+
+# Windows consoles default to cp1252, which can't print many characters
+# LLMs emit (e.g. non-breaking hyphens in parsed resumes).
+sys.stdout.reconfigure(encoding="utf-8")
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(PROJECT_ROOT / ".env")
