@@ -8,18 +8,34 @@ Run modes:
 
 Pipeline: Deepgram STT -> Groq Llama 3.3 70B -> Deepgram Aura TTS,
 with Silero VAD + a local turn-detection model for natural interruptions.
+
+Transcripts are saved to data/transcripts/ (gitignored) when the call ends.
 """
 
+import json
 import logging
+from datetime import datetime
+from pathlib import Path
 
 from dotenv import load_dotenv
-from livekit.agents import Agent, AgentSession, JobContext, WorkerOptions, cli
+from livekit.agents import (
+    Agent,
+    AgentSession,
+    JobContext,
+    RunContext,
+    WorkerOptions,
+    cli,
+    function_tool,
+)
 from livekit.plugins import deepgram, groq, silero
 from livekit.plugins.turn_detector.english import EnglishModel
 
 from prompts import GREETING_INSTRUCTION, SYSTEM_PROMPT
 
-load_dotenv()
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+TRANSCRIPT_DIR = PROJECT_ROOT / "data" / "transcripts"
+
+load_dotenv(PROJECT_ROOT / ".env")
 
 logger = logging.getLogger("echohire")
 
@@ -27,6 +43,16 @@ logger = logging.getLogger("echohire")
 class Interviewer(Agent):
     def __init__(self) -> None:
         super().__init__(instructions=SYSTEM_PROMPT)
+
+    @function_tool
+    async def end_interview(self, context: RunContext) -> None:
+        """End the call. Use ONLY in the closing stage, after you have thanked
+        the candidate and said goodbye."""
+        speech = context.session.current_speech
+        if speech:
+            await speech.wait_for_playout()
+        logger.info("interview ended by agent")
+        context.session.shutdown()
 
 
 async def entrypoint(ctx: JobContext) -> None:
@@ -40,6 +66,18 @@ async def entrypoint(ctx: JobContext) -> None:
         tts=deepgram.TTS(),
         turn_detection=EnglishModel(),
     )
+
+    async def save_transcript() -> None:
+        TRANSCRIPT_DIR.mkdir(parents=True, exist_ok=True)
+        stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        path = TRANSCRIPT_DIR / f"{ctx.room.name}_{stamp}.json"
+        path.write_text(
+            json.dumps(session.history.to_dict(), indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        logger.info("transcript saved to %s", path)
+
+    ctx.add_shutdown_callback(save_transcript)
 
     await session.start(agent=Interviewer(), room=ctx.room)
     await session.generate_reply(instructions=GREETING_INSTRUCTION)
