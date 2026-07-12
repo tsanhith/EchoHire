@@ -38,7 +38,8 @@ from livekit.agents.inference import TurnDetector
 from livekit.plugins import deepgram, google, groq, silero
 from livekit.plugins import openai as openai_plugin
 
-from prompts import GREETING_INSTRUCTION, SYSTEM_PROMPT
+from prompts import GREETING_INSTRUCTION, build_system_prompt
+from resume import load_latest_profile, profile_to_prompt_block
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 TRANSCRIPT_DIR = PROJECT_ROOT / "data" / "transcripts"
@@ -94,9 +95,19 @@ load_dotenv(PROJECT_ROOT / ".env")
 logger = logging.getLogger("echohire")
 
 
+def load_candidate_block() -> str | None:
+    """Most recently parsed resume (see parse_resume.py), or None -> sample."""
+    profile = load_latest_profile()
+    if profile is None:
+        logger.warning("no parsed candidate found, interviewing the sample candidate")
+        return None
+    logger.info("interviewing candidate: %s", profile.get("name"))
+    return profile_to_prompt_block(profile, role_applied=profile.get("role_applied"))
+
+
 class Interviewer(Agent):
     def __init__(self) -> None:
-        super().__init__(instructions=SYSTEM_PROMPT)
+        super().__init__(instructions=build_system_prompt(load_candidate_block()))
 
     @function_tool
     async def end_interview(self, context: RunContext) -> None:
