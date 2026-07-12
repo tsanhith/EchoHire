@@ -129,6 +129,22 @@ def save_profile(profile: dict, role_applied: str | None = None) -> Path:
     CANDIDATE_DIR.mkdir(parents=True, exist_ok=True)
     slug = re.sub(r"[^a-z0-9]+", "-", (profile.get("name") or "candidate").lower()).strip("-")
     path = CANDIDATE_DIR / f"{slug}.json"
+
+    # Same person re-applying (same email) overwrites their profile; a
+    # DIFFERENT person with the same name must not clobber it — their pending
+    # interview room resolves by slug and would load the wrong resume.
+    suffix = 2
+    while path.exists():
+        try:
+            existing = json.loads(path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            break  # corrupt file, safe to replace
+        same_person = (existing.get("email") or "") == (profile.get("email") or "")
+        if same_person:
+            break
+        path = CANDIDATE_DIR / f"{slug}-{suffix}.json"
+        suffix += 1
+
     profile["role_applied"] = role_applied
     path.write_text(json.dumps(profile, indent=2, ensure_ascii=False), encoding="utf-8")
     return path

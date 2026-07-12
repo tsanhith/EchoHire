@@ -46,6 +46,9 @@
 </div>
 <script>
 const esc = (s) => String(s ?? '—').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+// forward ?key=... to the API when RECRUITER_KEY protection is enabled
+const KEY = new URLSearchParams(location.search).get('key');
+const q = KEY ? `?key=${encodeURIComponent(KEY)}` : '';
 
 function transcriptHtml(t) {
   if (!t || !t.items) return '<i>no transcript</i>';
@@ -57,8 +60,9 @@ function transcriptHtml(t) {
   }).join('');
 }
 
-fetch('/api/candidates').then(r => r.json()).then(rows => {
+fetch('/api/candidates' + q).then(r => r.json()).then(rows => {
   const tbody = document.querySelector('#apps tbody');
+  if (!Array.isArray(rows)) { tbody.innerHTML = '<tr><td class="empty">Locked — open this page with ?key=YOUR_RECRUITER_KEY</td></tr>'; return; }
   if (!rows.length) { tbody.innerHTML = '<tr><td class="empty">No applications yet.</td></tr>'; return; }
   tbody.innerHTML = '<tr><th>Name</th><th>Role</th><th>Experience</th><th>Email</th><th>Status</th><th></th></tr>' +
     rows.map(c => `<tr>
@@ -79,8 +83,9 @@ function copyLink(slug, btn) {
   });
 }
 
-fetch('/api/results').then(r => r.json()).then(rows => {
+fetch('/api/results' + q).then(r => r.json()).then(rows => {
   const list = document.getElementById('list');
+  if (!Array.isArray(rows)) { list.innerHTML = '<div class="empty">Locked — recruiter key required.</div>'; return; }
   if (!rows.length) { list.innerHTML = '<div class="empty">No interviews yet. Completed calls appear here automatically.</div>'; return; }
   list.innerHTML = rows.map(row => {
     const ev = row.evaluation;

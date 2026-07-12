@@ -183,3 +183,31 @@ Closed the remaining gaps for v1:
 
 Verified: role-question matching and prompt injection, candidates endpoint
 returns both test applications with correct status, all pages serve.
+
+## 2026-07-12 — Full-project bug review (`fix/review-hardening`)
+
+Line-by-line review of everything on `main`. Eight findings, all fixed:
+
+1. `setdefault("name", ...)` doesn't replace a present-but-`null` key — the
+   resume parser emits `"name": null`, so unparseable resumes produced a
+   candidate literally named "None". Now `profile.get(...) or form_value`.
+2. Results were sorted alphabetically by filename while claiming newest-first.
+   Now sorted by file mtime.
+3. `build_llm()` constructed the Groq client unconditionally — removing
+   GROQ_API_KEY crashed the worker even with 3 other providers configured.
+   Providers are now all conditional, with a clear error when none exist.
+4. Slug collisions: a second candidate with the same *name* silently
+   overwrote the first profile — and the first candidate's pending interview
+   room (which resolves by slug) would have loaded the wrong resume. Same
+   email = re-application (overwrite intended); different email = `-2` suffix.
+5. Encrypted/corrupt PDFs surfaced as raw 500s; now a clean 400.
+6. Recruiter endpoints (candidate CTC data!) were unauthenticated. Optional
+   `RECRUITER_KEY` env: when set, `/api/results` and `/api/candidates` require
+   `?key=...` (the dashboard forwards it from its own URL).
+7. A typo in `config/company.json` crashed the agent at import; now warns and
+   falls back.
+8. The evaluator's transcript flattener now excludes system-role messages —
+   the evaluator judges the candidate, not our own instructions.
+
+All fixes verified with targeted tests (slug collision matrix, 401/200 key
+matrix, system-message exclusion, chain construction).
