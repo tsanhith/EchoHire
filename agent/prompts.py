@@ -2,9 +2,44 @@
 
 The candidate block is injected per-interview from the parsed resume
 (see resume.py); SAMPLE_CANDIDATE is the fallback when none exists.
+
+Company identity, shareable facts, and role-specific question banks come
+from config/company.json (private, gitignored) — company.example.json is
+the committed template. Drop the senior's answers in and they take effect
+on the next call, no code changes.
 """
 
-COMPANY_NAME = "the company"  # TODO: real name + intro from docs/QUESTIONS-FOR-COMPANY.md
+import json
+from pathlib import Path
+
+_CONFIG_DIR = Path(__file__).resolve().parent.parent / "config"
+
+
+def _load_company() -> dict:
+    for name in ("company.json", "company.example.json"):
+        path = _CONFIG_DIR / name
+        if path.exists():
+            return json.loads(path.read_text(encoding="utf-8"))
+    return {}
+
+
+_COMPANY = _load_company()
+COMPANY_NAME = _COMPANY.get("name", "the company")
+COMPANY_INTRO = _COMPANY.get("intro", "")
+COMPANY_FACTS = _COMPANY.get("agent_may_share", [])
+ROLE_QUESTIONS: dict[str, list[str]] = _COMPANY.get("role_questions", {})
+
+
+def role_questions_for(role: str | None) -> list[str]:
+    """Question bank entries whose key appears in the applied role (loose match)."""
+    if not role:
+        return []
+    role_lower = role.lower()
+    questions: list[str] = []
+    for key, items in ROLE_QUESTIONS.items():
+        if key.lower() in role_lower:
+            questions.extend(items)
+    return questions
 
 # Placeholder until the resume-parsing pipeline (Phase 2) exists.
 SAMPLE_CANDIDATE = """
@@ -34,6 +69,8 @@ INTERVIEW_STAGES = """
    both numbers back and ask the candidate to confirm you heard them correctly
    (speech recognition can mishear numbers). Same for their notice period.
 5. LOGISTICS - Ask about willingness to work from office / relocate if needed.
+5b. ROLE QUESTIONS - If role-specific questions are listed below, ask them
+   now, one at a time. Skip this stage if none are listed.
 6. CANDIDATE QUESTIONS - Ask ONCE if they have questions. Answer only general
    ones; for anything specific (exact salary bands, team details), say the HR
    team will cover it in the next round. If they have no questions, go
@@ -75,16 +112,36 @@ conducting a FIRST-ROUND SCREENING INTERVIEW over a voice call.
 
 ## Interview stages
 {interview_stages}
-
+{company_section}{role_questions_section}
 ## Candidate profile (from their resume and application)
 {candidate_block}
 """
 
 
-def build_system_prompt(candidate_block: str | None = None) -> str:
+def build_system_prompt(
+    candidate_block: str | None = None, role_applied: str | None = None
+) -> str:
+    company_section = ""
+    if COMPANY_INTRO or COMPANY_FACTS:
+        facts = "\n".join(f"- {fact}" for fact in COMPANY_FACTS)
+        company_section = (
+            "\n## About the company (the ONLY facts you may share)\n"
+            f"{COMPANY_INTRO}\n{facts}\n"
+        )
+
+    role_questions_section = ""
+    questions = role_questions_for(role_applied)
+    if questions:
+        numbered = "\n".join(f"{i + 1}. {q}" for i, q in enumerate(questions))
+        role_questions_section = (
+            f"\n## Role-specific questions for stage 5b ({role_applied})\n{numbered}\n"
+        )
+
     return _SYSTEM_PROMPT_TEMPLATE.format(
         company_name=COMPANY_NAME,
         interview_stages=INTERVIEW_STAGES,
+        company_section=company_section,
+        role_questions_section=role_questions_section,
         candidate_block=candidate_block or SAMPLE_CANDIDATE,
     )
 

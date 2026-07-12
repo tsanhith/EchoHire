@@ -26,11 +26,22 @@
   .turn { padding: .35rem 0; font-size: .88rem; border-bottom: 1px solid #232838; }
   .turn b { color: #6c8cff; } .turn.user b { color: #dda75c; }
   .empty { color: #6d7488; text-align: center; margin-top: 3rem; }
+  h2 { font-size: 1.05rem; color: #9aa1b3; margin-top: 2rem; }
+  table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+  th { text-align: left; color: #6d7488; font-size: .75rem; text-transform: uppercase; letter-spacing: .04em; padding: .4rem .6rem; }
+  td { padding: .55rem .6rem; border-top: 1px solid #232838; }
+  .badge { padding: .15rem .6rem; border-radius: 999px; font-size: .75rem; font-weight: 700; }
+  .badge.done { background: #17402a; color: #7bdd8f; }
+  .badge.pending { background: #453c14; color: #ffd76b; }
+  .linkbtn { background: #232a3f; color: #9db2ff; border: 1px solid #34406b; border-radius: 6px; padding: .3rem .7rem; font-size: .78rem; cursor: pointer; }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <h1>Echo<span>Hire</span> — Screening results</h1>
+  <h1>Echo<span>Hire</span> — Recruiter dashboard</h1>
+  <h2>Applications</h2>
+  <div class="card" style="padding:.4rem .6rem"><table id="apps"><tbody><tr><td class="empty">Loading…</td></tr></tbody></table></div>
+  <h2>Completed interviews</h2>
   <div id="list"><div class="empty">Loading…</div></div>
 </div>
 <script>
@@ -46,15 +57,39 @@ function transcriptHtml(t) {
   }).join('');
 }
 
+fetch('/api/candidates').then(r => r.json()).then(rows => {
+  const tbody = document.querySelector('#apps tbody');
+  if (!rows.length) { tbody.innerHTML = '<tr><td class="empty">No applications yet.</td></tr>'; return; }
+  tbody.innerHTML = '<tr><th>Name</th><th>Role</th><th>Experience</th><th>Email</th><th>Status</th><th></th></tr>' +
+    rows.map(c => `<tr>
+      <td><b>${esc(c.name)}</b></td>
+      <td>${esc(c.role_applied)}</td>
+      <td>${esc(c.experience_years)} yrs</td>
+      <td>${esc(c.email)}</td>
+      <td><span class="badge ${c.interviewed ? 'done' : 'pending'}">${c.interviewed ? 'interviewed' : 'pending'}</span></td>
+      <td><button class="linkbtn" onclick="copyLink('${esc(c.slug)}', this)">copy interview link</button></td>
+    </tr>`).join('');
+});
+
+function copyLink(slug, btn) {
+  const url = `${location.origin}/interview.html?room=interview-${slug}-${Date.now()}`;
+  navigator.clipboard.writeText(url).then(() => {
+    btn.textContent = 'copied!';
+    setTimeout(() => btn.textContent = 'copy interview link', 1500);
+  });
+}
+
 fetch('/api/results').then(r => r.json()).then(rows => {
   const list = document.getElementById('list');
   if (!rows.length) { list.innerHTML = '<div class="empty">No interviews yet. Completed calls appear here automatically.</div>'; return; }
   list.innerHTML = rows.map(row => {
     const ev = row.evaluation;
     const rec = ev?.recommendation || 'unknown';
+    const who = ev?.candidate_name || row.candidate?.name || row.id;
+    const role = row.candidate?.role_applied;
     return `<div class="card">
       <div class="head">
-        <span class="name">${esc(ev?.candidate_name || row.id)}</span>
+        <span class="name">${esc(who)}${role ? ` <span style="color:#6d7488;font-weight:400;font-size:.85rem">— ${esc(role)}</span>` : ''}</span>
         <span class="rec ${esc(rec)}">${esc(rec)}</span>
       </div>
       ${ev ? `

@@ -26,7 +26,9 @@
   <h1>Echo<span>Hire</span> Interview</h1>
   <div class="orb" id="orb"></div>
   <div id="state">Ready when you are. Find a quiet spot and use headphones if you can.</div>
+  <div id="timer" style="font-variant-numeric:tabular-nums;color:#6d7488;min-height:1.2em"></div>
   <button id="join">Join interview</button>
+  <button id="mute" style="display:none">Mute</button>
   <button id="leave" class="leave" style="display:none">Leave call</button>
   <div class="hint">You'll be speaking with an AI interviewer. The call takes about 10 minutes and is recorded for review by the hiring team.</div>
 </div>
@@ -35,7 +37,16 @@ const params = new URLSearchParams(location.search);
 const roomName = params.get('room');
 const state = document.getElementById('state'), orb = document.getElementById('orb');
 const joinBtn = document.getElementById('join'), leaveBtn = document.getElementById('leave');
-let room;
+const muteBtn = document.getElementById('mute'), timerEl = document.getElementById('timer');
+let room, timerId, muted = false;
+
+function startTimer() {
+  const t0 = Date.now();
+  timerId = setInterval(() => {
+    const s = Math.floor((Date.now() - t0) / 1000);
+    timerEl.textContent = `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+  }, 1000);
+}
 
 if (!roomName) { state.textContent = 'Missing room — open this page from your application link.'; joinBtn.disabled = true; }
 
@@ -60,15 +71,17 @@ joinBtn.onclick = async () => {
     });
     room.on(LivekitClient.RoomEvent.Disconnected, () => {
       orb.className = 'orb';
+      clearInterval(timerId);
       state.textContent = 'Interview finished. You can close this tab — the team will get back to you soon.';
-      joinBtn.style.display = 'none'; leaveBtn.style.display = 'none';
+      joinBtn.style.display = 'none'; leaveBtn.style.display = 'none'; muteBtn.style.display = 'none';
     });
 
     await room.connect(url, token);
     await room.localParticipant.setMicrophoneEnabled(true);
     orb.classList.add('live');
+    startTimer();
     state.textContent = 'Connected — the interviewer will greet you in a moment.';
-    joinBtn.style.display = 'none'; leaveBtn.style.display = '';
+    joinBtn.style.display = 'none'; leaveBtn.style.display = ''; muteBtn.style.display = '';
   } catch (err) {
     state.textContent = 'Failed to connect: ' + err.message;
     joinBtn.disabled = false;
@@ -76,6 +89,11 @@ joinBtn.onclick = async () => {
 };
 
 leaveBtn.onclick = () => room && room.disconnect();
+muteBtn.onclick = async () => {
+  muted = !muted;
+  await room.localParticipant.setMicrophoneEnabled(!muted);
+  muteBtn.textContent = muted ? 'Unmute' : 'Mute';
+};
 </script>
 </body>
 </html>
