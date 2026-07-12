@@ -35,3 +35,24 @@ Goal: a working AI interviewer you can talk to, before any web UI exists.
 
 **Testing**: `python agent/main.py console` runs the full pipeline against your
 microphone in the terminal — no frontend needed.
+
+## 2026-07-12 — First real interview test + fixes (`feat/transcripts-and-hangup`)
+
+Ran a full ~4 minute mock interview in console mode. It worked end-to-end: all
+7 stages, resume-grounded questions, correct deflection of company questions,
+~2.6s end-to-end voice latency. Three problems surfaced from the session log:
+
+1. **The call never ended** — after "Goodbye" the session sat open until Ctrl+C.
+   Fixed by giving the agent an `end_interview` function tool (LLM tool-calling):
+   the closing-stage prompt tells it to call the tool after saying goodbye, the
+   tool waits for the farewell audio to finish playing, then shuts the session down.
+2. **The transcript was lost** — the entire point of a screening call is the
+   answers (CTC, notice period). Added a shutdown callback that serializes
+   `session.history` to `data/transcripts/<room>_<timestamp>.json`.
+3. **STT misheard a number** — "twelve LPA" transcribed as "full LPA", and the
+   LLM silently guessed. Numbers are the highest-stakes data in the call, so the
+   compensation stage now requires repeating CTC/notice figures back to the
+   candidate for confirmation.
+
+Also: `load_dotenv` now resolves `.env` relative to the project root, so the
+agent can be launched from any working directory.
