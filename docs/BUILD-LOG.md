@@ -123,3 +123,41 @@ The agent now interviews real candidates instead of the hardcoded sample:
 
 Tested end-to-end with a generated dummy resume: PDF → 884 chars extracted →
 structured by Groq → agent system prompt contains the right candidate.
+
+Real-resume test: parsing the user's actual resume exercised the fallback for
+real — Groq was rate-limited, Cerebras took over transparently. Also fixed a
+Windows quirk: consoles default to cp1252 and crash printing LLM output
+(non-breaking hyphens); stdout is now forced to UTF-8.
+
+## 2026-07-12 — Phases 3+4: web portal, evaluation, recruiter view (`feat/web-portal`)
+
+The full product loop now exists:
+
+**Backend (FastAPI)** — `backend/app.py`:
+- `POST /api/apply`: form + resume PDF → parse → profile saved → returns a
+  unique interview room (`interview-<candidate-slug>-<timestamp>`)
+- `GET /api/token`: LiveKit JWT so the browser can join its room
+- `GET /api/results`: transcripts joined with evaluations, newest first
+- serves the static frontend
+
+**Frontend** — three dependency-free pages (vanilla JS + LiveKit UMD bundle):
+apply form → interview room (audio-only WebRTC, visual state orb, handles the
+agent hanging up) → recruiter results dashboard (facts grid, red flags,
+recommendation badge, collapsible transcript).
+
+**Agent changes**:
+- Room-name routing: `interview-<slug>-<ts>` → loads `data/candidates/<slug>.json`,
+  so concurrent/queued candidates each get their own resume context. Console
+  and playground rooms fall back to the most recently parsed candidate.
+- Post-call evaluation: after saving the transcript, the shutdown callback runs
+  the LLM evaluator (offline provider chain) and writes a structured report —
+  CTC/notice extracted, communication + credibility scores, red flags,
+  proceed/reject/borderline recommendation. Evaluation failure never loses the
+  transcript.
+
+**Testing done** (everything short of a live mic call):
+- Room→candidate routing resolves the right profile from a room name
+- Evaluator scored a fabricated transcript correctly (extracted "6 LPA",
+  recommended "proceed") via live Groq call
+- Backend: dummy PDF application → parsed profile + room; token endpoint
+  returns a valid JWT; results endpoint and all three pages serve correctly
