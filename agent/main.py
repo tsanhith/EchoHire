@@ -32,7 +32,11 @@ from livekit.agents import (
     llm as agents_llm,
 )
 from livekit.agents.inference import TurnDetector
-from livekit.plugins import deepgram, groq, silero
+
+# Plugins must be imported at module level: LiveKit registers them on the
+# main thread, and build_llm() runs on a job thread.
+from livekit.plugins import deepgram, google, groq, silero
+from livekit.plugins import openai as openai_plugin
 
 from prompts import GREETING_INSTRUCTION, SYSTEM_PROMPT
 
@@ -55,8 +59,6 @@ def build_llm() -> agents_llm.LLM:
         groq.LLM(model=os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"))
     ]
     if os.getenv("CEREBRAS_API_KEY"):
-        from livekit.plugins import openai as openai_plugin
-
         chain.append(
             openai_plugin.LLM.with_cerebras(
                 model=os.getenv("CEREBRAS_MODEL", "gpt-oss-120b"),
@@ -64,12 +66,8 @@ def build_llm() -> agents_llm.LLM:
             )
         )
     if os.getenv("GOOGLE_API_KEY"):
-        from livekit.plugins import google
-
         chain.append(google.LLM(model=os.getenv("GEMINI_MODEL", "gemini-3.5-flash")))
     if os.getenv("OPENROUTER_API_KEY"):
-        from livekit.plugins import openai as openai_plugin
-
         chain.append(
             openai_plugin.LLM.with_openrouter(
                 model=os.getenv("OPENROUTER_MODEL", "meta-llama/llama-3.3-70b-instruct:free"),
