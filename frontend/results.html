@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EchoHire — Results</title>
+<style>
+  :root { font-family: system-ui, sans-serif; }
+  body { margin: 0; background: #0f1117; color: #e6e8ee; padding: 2rem 1rem; }
+  .wrap { max-width: 860px; margin: 0 auto; }
+  h1 { font-size: 1.5rem; } h1 span { color: #6c8cff; }
+  .card { background: #181b25; border: 1px solid #2a2f3e; border-radius: 14px; padding: 1.3rem 1.5rem; margin: 1rem 0; }
+  .head { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: .5rem; }
+  .name { font-weight: 700; font-size: 1.1rem; }
+  .rec { padding: .25rem .8rem; border-radius: 999px; font-size: .82rem; font-weight: 700; text-transform: uppercase; }
+  .rec.proceed { background: #17402a; color: #7bdd8f; }
+  .rec.reject { background: #46201f; color: #ff8f8f; }
+  .rec.borderline, .rec.unknown { background: #453c14; color: #ffd76b; }
+  .facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: .6rem; margin: 1rem 0; }
+  .fact { background: #0f1117; border-radius: 8px; padding: .55rem .7rem; }
+  .fact b { display: block; font-size: .72rem; color: #6d7488; text-transform: uppercase; letter-spacing: .04em; }
+  .summary { color: #b9bfce; font-size: .93rem; line-height: 1.5; }
+  ul { margin: .4rem 0; padding-left: 1.2rem; font-size: .9rem; }
+  .flags li { color: #ff9f9f; } .highs li { color: #8fe3a4; }
+  details { margin-top: .8rem; } summary { cursor: pointer; color: #6c8cff; font-size: .9rem; }
+  .turn { padding: .35rem 0; font-size: .88rem; border-bottom: 1px solid #232838; }
+  .turn b { color: #6c8cff; } .turn.user b { color: #dda75c; }
+  .empty { color: #6d7488; text-align: center; margin-top: 3rem; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Echo<span>Hire</span> — Screening results</h1>
+  <div id="list"><div class="empty">Loading…</div></div>
+</div>
+<script>
+const esc = (s) => String(s ?? '—').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+function transcriptHtml(t) {
+  if (!t || !t.items) return '<i>no transcript</i>';
+  return t.items.filter(i => i.type === 'message').map(i => {
+    const text = (i.content || []).filter(c => typeof c === 'string').join(' ');
+    if (!text.trim()) return '';
+    const who = i.role === 'user' ? 'Candidate' : 'Echo';
+    return `<div class="turn ${i.role}"><b>${who}:</b> ${esc(text)}</div>`;
+  }).join('');
+}
+
+fetch('/api/results').then(r => r.json()).then(rows => {
+  const list = document.getElementById('list');
+  if (!rows.length) { list.innerHTML = '<div class="empty">No interviews yet. Completed calls appear here automatically.</div>'; return; }
+  list.innerHTML = rows.map(row => {
+    const ev = row.evaluation;
+    const rec = ev?.recommendation || 'unknown';
+    return `<div class="card">
+      <div class="head">
+        <span class="name">${esc(ev?.candidate_name || row.id)}</span>
+        <span class="rec ${esc(rec)}">${esc(rec)}</span>
+      </div>
+      ${ev ? `
+      <div class="facts">
+        <div class="fact"><b>Current CTC</b>${esc(ev.ctc_current)}</div>
+        <div class="fact"><b>Expected CTC</b>${esc(ev.ctc_expected)}</div>
+        <div class="fact"><b>Notice period</b>${esc(ev.notice_period)}</div>
+        <div class="fact"><b>Communication</b>${esc(ev.communication?.score)}/5</div>
+        <div class="fact"><b>Credibility</b>${esc(ev.experience_credibility?.score)}/5</div>
+        <div class="fact"><b>Relocation</b>${esc(ev.relocation)}</div>
+      </div>
+      <div class="summary">${esc(ev.summary)}<br><br><b>Why ${esc(rec)}:</b> ${esc(ev.recommendation_reason)}</div>
+      ${ev.red_flags?.length ? `<ul class="flags">${ev.red_flags.map(f => `<li>${esc(f)}</li>`).join('')}</ul>` : ''}
+      ${ev.highlights?.length ? `<ul class="highs">${ev.highlights.map(h => `<li>${esc(h)}</li>`).join('')}</ul>` : ''}
+      ` : '<div class="summary">No evaluation was generated for this call.</div>'}
+      <details><summary>Full transcript</summary>${transcriptHtml(row.transcript)}</details>
+    </div>`;
+  }).join('');
+});
+</script>
+</body>
+</html>

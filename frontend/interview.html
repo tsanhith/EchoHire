@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EchoHire — Interview</title>
+<script src="https://cdn.jsdelivr.net/npm/livekit-client@2/dist/livekit-client.umd.min.js"></script>
+<style>
+  :root { font-family: system-ui, sans-serif; }
+  body { margin: 0; background: #0f1117; color: #e6e8ee; display: grid; place-items: center; min-height: 100vh; }
+  .card { background: #181b25; border: 1px solid #2a2f3e; border-radius: 14px; padding: 2rem; width: min(420px, 92vw); text-align: center; }
+  h1 { margin: 0 0 .25rem; font-size: 1.4rem; } h1 span { color: #6c8cff; }
+  #state { color: #9aa1b3; min-height: 1.4em; margin: 1rem 0; }
+  .orb { width: 110px; height: 110px; margin: 1.2rem auto; border-radius: 50%;
+         background: radial-gradient(circle at 35% 30%, #8ea6ff, #4257c4); opacity: .35; transition: all .15s; }
+  .orb.live { opacity: 1; box-shadow: 0 0 45px #6c8cff66; }
+  .orb.speaking { transform: scale(1.12); box-shadow: 0 0 70px #6c8cffaa; }
+  button { background: #6c8cff; color: #fff; border: 0; border-radius: 8px; padding: .7rem 1.4rem; font-size: 1rem; font-weight: 600; cursor: pointer; margin: .3rem; }
+  button.leave { background: #b84040; }
+  button:disabled { opacity: .5; }
+  .hint { font-size: .82rem; color: #6d7488; margin-top: 1.2rem; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>Echo<span>Hire</span> Interview</h1>
+  <div class="orb" id="orb"></div>
+  <div id="state">Ready when you are. Find a quiet spot and use headphones if you can.</div>
+  <button id="join">Join interview</button>
+  <button id="leave" class="leave" style="display:none">Leave call</button>
+  <div class="hint">You'll be speaking with an AI interviewer. The call takes about 10 minutes and is recorded for review by the hiring team.</div>
+</div>
+<script>
+const params = new URLSearchParams(location.search);
+const roomName = params.get('room');
+const state = document.getElementById('state'), orb = document.getElementById('orb');
+const joinBtn = document.getElementById('join'), leaveBtn = document.getElementById('leave');
+let room;
+
+if (!roomName) { state.textContent = 'Missing room — open this page from your application link.'; joinBtn.disabled = true; }
+
+joinBtn.onclick = async () => {
+  joinBtn.disabled = true;
+  state.textContent = 'Connecting…';
+  try {
+    const res = await fetch(`/api/token?room=${encodeURIComponent(roomName)}`);
+    const { token, url } = await res.json();
+    if (!res.ok) throw new Error('Could not get access token');
+
+    room = new LivekitClient.Room();
+    room.on(LivekitClient.RoomEvent.TrackSubscribed, (track) => {
+      if (track.kind === 'audio') { const el = track.attach(); document.body.appendChild(el); }
+    });
+    room.on(LivekitClient.RoomEvent.ActiveSpeakersChanged, (speakers) => {
+      orb.classList.toggle('speaking', speakers.some(s => s.identity !== 'candidate'));
+    });
+    room.on(LivekitClient.RoomEvent.ParticipantDisconnected, () => {
+      // the interviewer hung up -> the interview is over
+      room.disconnect();
+    });
+    room.on(LivekitClient.RoomEvent.Disconnected, () => {
+      orb.className = 'orb';
+      state.textContent = 'Interview finished. You can close this tab — the team will get back to you soon.';
+      joinBtn.style.display = 'none'; leaveBtn.style.display = 'none';
+    });
+
+    await room.connect(url, token);
+    await room.localParticipant.setMicrophoneEnabled(true);
+    orb.classList.add('live');
+    state.textContent = 'Connected — the interviewer will greet you in a moment.';
+    joinBtn.style.display = 'none'; leaveBtn.style.display = '';
+  } catch (err) {
+    state.textContent = 'Failed to connect: ' + err.message;
+    joinBtn.disabled = false;
+  }
+};
+
+leaveBtn.onclick = () => room && room.disconnect();
+</script>
+</body>
+</html>

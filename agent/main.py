@@ -16,6 +16,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 from datetime import datetime
 from pathlib import Path
 
@@ -38,11 +39,13 @@ from livekit.agents.inference import TurnDetector
 from livekit.plugins import deepgram, google, groq, silero
 from livekit.plugins import openai as openai_plugin
 
+from evaluation import evaluate_transcript
 from prompts import GREETING_INSTRUCTION, build_system_prompt
-from resume import load_latest_profile, profile_to_prompt_block
+from resume import CANDIDATE_DIR, load_latest_profile, profile_to_prompt_block
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 TRANSCRIPT_DIR = PROJECT_ROOT / "data" / "transcripts"
+EVALUATION_DIR = PROJECT_ROOT / "data" / "evaluations"
 
 # Hard ceiling so no call (and no free-tier quota) can run away.
 MAX_CALL_SECONDS = 15 * 60
@@ -95,9 +98,24 @@ load_dotenv(PROJECT_ROOT / ".env")
 logger = logging.getLogger("echohire")
 
 
-def load_candidate_block() -> str | None:
-    """Most recently parsed resume (see parse_resume.py), or None -> sample."""
-    profile = load_latest_profile()
+def load_candidate_block(room_name: str) -> str | None:
+    """Candidate profile for this interview.
+
+    Web-portal rooms are named "interview-<candidate-slug>-<timestamp>", which
+    maps to data/candidates/<candidate-slug>.json. Any other room (console
+    testing, playground) gets the most recently parsed candidate; if none
+    exists, the sample candidate.
+    """
+    profile = None
+    match = re.fullmatch(r"interview-(.+)-\d+", room_name)
+    if match:
+        path = CANDIDATE_DIR / f"{match.group(1)}.json"
+        if path.exists():
+            profile = json.loads(path.read_text(encoding="utf-8"))
+        else:
+            logger.warning("no profile for room %s at %s", room_name, path)
+    if profile is None:
+        profile = load_latest_profile()
     if profile is None:
         logger.warning("no parsed candidate found, interviewing the sample candidate")
         return None
@@ -106,8 +124,8 @@ def load_candidate_block() -> str | None:
 
 
 class Interviewer(Agent):
-    def __init__(self) -> None:
-        super().__init__(instructions=build_system_prompt(load_candidate_block()))
+    def __init__(self, candidate_block: str | None) -> None:
+        super().__init__(instructions=build_system_prompt(candidate_block))
 
     @function_tool
     async def end_interview(self, context: RunContext) -> None:
@@ -142,17 +160,35 @@ async def entrypoint(ctx: JobContext) -> None:
         },
     )
 
-    async def save_transcript() -> None:
-        TRANSCRIPT_DIR.mkdir(parents=True, exist_ok=True)
+    async def save_transcript_and_evaluate() -> None:
+        history = session.history.to_dict()
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        path = TRANSCRIPT_DIR / f"{ctx.room.name}_{stamp}.json"
-        path.write_text(
-            json.dumps(session.history.to_dict(), indent=2, ensure_ascii=False),
-            encoding="utf-8",
-        )
-        logger.info("transcript saved to %s", path)
+        base_name = f"{ctx.room.name}_{stamp}.json"
 
-    ctx.add_shutdown_callback(save_transcript)
+        TRANSCRIPT_DIR.mkdir(parents=True, exist_ok=True)
+        transcript_path = TRANSCRIPT_DIR / base_name
+        transcript_path.write_text(
+            json.dumps(history, indent=2, ensure_ascii=False), encoding="utf-8"
+        )
+        logger.info("transcript saved to %s", transcript_path)
+
+        try:
+            # blocking HTTP client — keep it off the event loop
+            report = await asyncio.to_thread(evaluate_transcript, history)
+            EVALUATION_DIR.mkdir(parents=True, exist_ok=True)
+            evaluation_path = EVALUATION_DIR / base_name
+            evaluation_path.write_text(
+                json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8"
+            )
+            logger.info(
+                "evaluation saved to %s (recommendation: %s)",
+                evaluation_path,
+                report.get("recommendation"),
+            )
+        except Exception:
+            logger.exception("evaluation failed — transcript is still saved")
+
+    ctx.add_shutdown_callback(save_transcript_and_evaluate)
 
     async def enforce_max_duration() -> None:
         await asyncio.sleep(MAX_CALL_SECONDS)
@@ -167,7 +203,9 @@ async def entrypoint(ctx: JobContext) -> None:
 
     ctx.add_shutdown_callback(cancel_watchdog)
 
-    await session.start(agent=Interviewer(), room=ctx.room)
+    await session.start(
+        agent=Interviewer(load_candidate_block(ctx.room.name)), room=ctx.room
+    )
     await session.generate_reply(instructions=GREETING_INSTRUCTION)
 
 
